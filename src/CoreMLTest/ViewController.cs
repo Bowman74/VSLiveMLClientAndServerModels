@@ -48,8 +48,9 @@ namespace CoreMLTest
                 UIImage originalImage = e.Info[UIImagePickerController.OriginalImage] as UIImage;
                 if (originalImage != null)
                 {
+                    var scaledImage = originalImage.Scale(new CGSize(300, 300));
                     var classifier = new ImageClassifier();
-                    var coreImage = new CIImage(originalImage.Scale(new CGSize(300, 300)));
+                    var coreImage = new CIImage(scaledImage);
                     CVPixelBuffer buffer = new CVPixelBuffer(300, 300, CVPixelFormatType.CV32ARGB);
 
                     UIGraphics.BeginImageContext(new CGSize(300, 300));
@@ -60,7 +61,7 @@ namespace CoreMLTest
 
                     var output = classifier.GetPrediction(buffer, out NSError error);
 
-                    imgSelected.Image = originalImage;
+                    imgSelected.Image = scaledImage;
                     lblResult.Text = $"This looks like: {output.ClassLabel}";
                 }
             }
