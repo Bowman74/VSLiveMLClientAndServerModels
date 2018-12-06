@@ -1,0 +1,185 @@
+https://console.cloud.google.com/home/dashboard?project=vsliveml
+
+rm -rf ./*
+
+gcloud config set project vsliveml
+
+
+gcloud ml-engine models list
+
+pip install --user --upgrade tensorflow
+
+wget https://github.com/GoogleCloudPlatform/cloudml-samples/archive/master.zip
+
+unzip master.zip
+
+cd cloudml-samples-master/census/estimator
+
+mkdir data
+
+gsutil -m cp gs://cloud-samples-data/ml-engine/census/data/* data/
+
+TRAIN_DATA=$(pwd)/data/adult.data.csv
+
+EVAL_DATA=$(pwd)/data/adult.test.csv
+
+pip install --user -r ../requirements.txt
+
+MODEL_DIR=output
+
+
+gcloud ml-engine local train --module-name trainer.task --package-path trainer/ --job-dir $MODEL_DIR -- --train-files $TRAIN_DATA --eval-files $EVAL_DATA --train-steps 1000 --eval-steps 100
+
+View model results:
+tensorboard --logdir=$MODEL_DIR --port=8080
+
+set up storage:
+BUCKET_NAME="VSLiveMLTest"
+
+PROJECT_ID=$(gcloud config list project --format "value(core.project)")
+BUCKET_NAME=${PROJECT_ID}-mlengine
+
+REGION=us-central1
+
+gsutil mb -l $REGION gs://$BUCKET_NAME
+
+gsutil cp -r data gs://$BUCKET_NAME/data
+
+TRAIN_DATA=gs://$BUCKET_NAME/data/adult.data.csv
+EVAL_DATA=gs://$BUCKET_NAME/data/adult.test.csv
+
+gsutil cp ../test.json gs://$BUCKET_NAME/data/test.json
+
+TEST_JSON=gs://$BUCKET_NAME/data/test.json
+
+
+Train in cloud:
+JOB_NAME=census_single_1
+
+OUTPUT_PATH=gs://$BUCKET_NAME/$JOB_NAME
+
+gcloud ml-engine jobs submit training $JOB_NAME --job-dir $OUTPUT_PATH --runtime-version 1.8 --module-name trainer.task --package-path trainer/ --region $REGION -- --train-files $TRAIN_DATA --eval-files $EVAL_DATA --train-steps 1000 --eval-steps 100 --verbosity DEBUG
+
+Deploy the service
+MODEL_NAME=census
+
+gcloud ml-engine models create $MODEL_NAME --regions=$REGION
+
+gsutil ls -r $OUTPUT_PATH/export
+
+MODEL_BINARIES=gs://$BUCKET_NAME/census_single_1/export/census/123456789/
+
+
+gcloud ml-engine versions create v1 --model $MODEL_NAME --origin $MODEL_BINARIES --runtime-version 1.8
+
+gcloud ml-engine predict --model $MODEL_NAME --version v1 --json-instances ../test.json
+
+
+Get info about our model:
+python /home/g7491420/.local/lib/python2.7/site-packages/tensorflow/python/tools/saved_model_cli.py show --dir ./models --all
+
+SIGNATURE_DEF_KEY=`saved_model_cli show --dir $MODEL_BINARIES --tag serve | grep "SignatureDef key:" | awk 'BEGIN{FS="\""}{print $2}' | head -1` 
+
+saved_model_cli show --dir $MODEL_BINARIES --tag serve --signature_def $SIGNATURE_DEF_KEY
+
+
+Convert to TF.Lite
+
+gsutil cp "gs://$BUCKET_NAME/census_single_1/export/census/1543705394/variables/variables.data-00000-of-00001" "var
+iables.data-00000-of-00001"
+
+
+
+freeze_graph --input_saved_model_dir=./models --input_binary=false --output_graph=./frozengraph/estimator.pb --output_node_names=head/predictions/logits/Shape,head/predictions/probabilities
+
+freeze_graph --input_save_model_dir=gs://$BUCKET_NAME/census_single_1/export/census/1543705394 --input_checkpoint=./output/model.ckpt-1000 --input_binary=false --output_graph=/mymodel/estimator.pb --output_node_names=census-eval
+
+tflite_convert --output_file=gs://$BUCKET_NAME/census_single_1/tmp/foo.tflite --saved_model_dir=gs://$BUCKET_NAME/census_single_1/export/census/1543705394
+
+tflite_convert --output_file=gs://$BUCKET_NAME/census_single_1/tmp/foo.tflite --graph_def_file=ml hours_per_week/marital_status/native_country
+
+tflite_convert --output_file=foo.tflite --graph_def_file=./frozengraph/ESTIMATOR.PB --input_arrays=age,capital_gain,capital_loss,education,education_num,gender,hours_per_week,marital_status,native_country,occupation,race,relationship,workclass --output_arrays=class_ids,classes,logistic,logits,probabilities
+
+tflite_convert --output_file=foo.tflite --graph_def_file=./frozengraph/estimator.pb --input_arrays=Placeholder_8,Placeholder_10,Placeholder_11,Placeholder_2,Placeholder_9,Placeholder,Placeholder_12,Placeholder_3,Placeholder_7,Placeholder_6,Placeholder_1,Placeholder_4,Placeholder_5 --output_arrays=head/predictions/probabilities
+
+
+freeze_graph --input_saved_model_dir=./models --input_binary=false --output_graph=./frozengraph/estimator.pb --output_node_names=
+
+optimize_for_inference --input=./frozengraph/estimator.pb --output=./frozengraph/opt_estimator.pb --frozen_graph=True --input_names=Placeholder_8,Placeholder_10,Placeholder_11,Placeholder_2,Placeholder_9,Placeholder,Placeholder_12,Placeholder_3,Placeholder_7,Placeholder_6,Placeholder_1,Placeholder_4,Placeholder_5 --output_names=head/predictions/probabilities
+
+signature_def['predict']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['age'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1)
+        name: Placeholder_8:0
+    inputs['capital_gain'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1)
+        name: Placeholder_10:0
+    inputs['capital_loss'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1)
+        name: Placeholder_11:0
+    inputs['education'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_2:0
+    inputs['education_num'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1)
+        name: Placeholder_9:0
+    inputs['gender'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder:0
+    inputs['hours_per_week'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1)
+        name: Placeholder_12:0
+    inputs['marital_status'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_3:0
+    inputs['native_country'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_7:0
+    inputs['occupation'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_6:0
+    inputs['race'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_1:0
+    inputs['relationship'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_4:0
+    inputs['workclass'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1)
+        name: Placeholder_5:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['class_ids'] tensor_info:
+        dtype: DT_INT64
+        shape: (-1, 1)
+        name: head/predictions/ExpandDims:0
+    outputs['classes'] tensor_info:
+        dtype: DT_STRING
+        shape: (-1, 1)
+        name: head/predictions/str_classes:0
+    outputs['logistic'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: head/predictions/logistic:0
+    outputs['logits'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: add:0
+    outputs['probabilities'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 2)
+        name: head/predictions/probabilities:0
+  Method name is: tensorflow/serving/predict
